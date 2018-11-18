@@ -5,12 +5,22 @@
  */
 package com.marlonprudente.tgs;
 
+import message.TGSMessage;
+import message.TGSTicket;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import javax.crypto.SealedObject;
+import message.ServerTicket;
+import message.TGSSessionTicket;
+import utils.CryptoUtils;
+import utils.Hash;
+import utils.RandomUtils;
 
 /**
  *
@@ -33,29 +43,48 @@ public class TGSMain {
 
 class Connection extends Thread {
 
-    DataInputStream in;
-    DataOutputStream out;
+    ObjectInputStream inStream = null;
+    ObjectOutputStream outStream = null;
+    public static CryptoUtils criptoSession = null;
+    public static CryptoUtils criptoTgs = null;
+    public static CryptoUtils criptoServer = null;
     Socket clientSocket;
+    Database db = new Database();
+    String tgsKey = db.usuarios.get("tgs");
+    String serverKey = db.usuarios.get("server");
 
     public Connection(Socket aClientSocket) {
         try {
+            criptoTgs = new CryptoUtils(tgsKey);
+            criptoServer = new CryptoUtils(serverKey);
             clientSocket = aClientSocket;
-            in = new DataInputStream(clientSocket.getInputStream());
-            out = new DataOutputStream(clientSocket.getOutputStream());
+            inStream = new ObjectInputStream(clientSocket.getInputStream());
+            outStream = new ObjectOutputStream(clientSocket.getOutputStream());
             this.start();
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.out.println("Connection:" + e.getMessage());
         }
     }
 
     public void run() {
-        try {			                 // an echo server
-            String data = in.readUTF();	                  // read a line of data from the stream
-            out.writeUTF(data + "Respostaasdf");
-        } catch (EOFException e) {
-            System.out.println("EOF:" + e.getMessage());
-        } catch (IOException e) {
-            System.out.println("readline:" + e.getMessage());
+        try {
+            TGSMessage data = (TGSMessage)inStream.readObject();
+            TGSTicket ticketTgs = (TGSTicket)criptoTgs.decrypt(data.getTGSTicket());
+            String sessionTGSKey = ticketTgs.sessionKey;
+            criptoSession = new CryptoUtils(Hash.stringHexa(Hash.gerarHash(sessionTGSKey, "MD5")));
+            TGSSessionTicket tgssTicket = (TGSSessionTicket)criptoSession.decrypt(data.getSessionTicket()); 
+            System.out.println("Cliente: " + tgssTicket.clienteID);
+            String sessionKeyServer = String.valueOf(RandomUtils.getRandom(100000000));
+            System.out.println("SessionKeyServidor: " + sessionKeyServer);
+            tgssTicket.setSessionKey(sessionKeyServer);
+            ServerTicket serverTicket = new ServerTicket(tgssTicket.clienteID, tgssTicket.timeStamp, sessionKeyServer);
+            SealedObject serverTicketCripto = criptoServer.encrypt(serverTicket);
+            SealedObject sessionTicketCripto = criptoSession.encrypt(tgssTicket);            
+            data.setServerTicket(serverTicketCripto);
+            data.setSessionTicket(sessionTicketCripto);
+            outStream.writeObject(data);
+        } catch (Exception e) {
+            System.out.println("Run:" + e.getMessage());
         } finally {
             try {
                 clientSocket.close();

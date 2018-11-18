@@ -3,7 +3,7 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package asmessage;
+package message;
 
 import java.io.Serializable;
 import java.util.Date;
@@ -16,6 +16,7 @@ import javax.crypto.SealedObject;
 public class ASMessage implements Serializable{
     String login;
     SealedObject ASTicket;
+    SealedObject TGSTicket;
     
     public ASMessage(String usuario, SealedObject ticketAS){
         this.login = usuario;
@@ -30,15 +31,21 @@ public class ASMessage implements Serializable{
 //        System.out.println("Chave de sessão: " + sessionKey);
     }
     
-    public SealedObject getTicket(){
+    public SealedObject getASTicket(){
         return this.ASTicket;
+    }
+    public SealedObject getTGSTicket(){
+        return this.TGSTicket;
     }
     
     public String getUsuario(){
         return this.login;
     }
     
-    public void setTicket(SealedObject ticket){
+    public void setASTicket(SealedObject ticket){
         this.ASTicket = ticket;
+    }
+    public void setTGSTicket(SealedObject ticket){
+        this.TGSTicket = ticket;
     }
 }

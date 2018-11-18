@@ -14,9 +14,16 @@ import java.util.Date;
 public class TimeUtils {
     
     public static final long HOUR = 3600*1000; // in milli-seconds
+    public static final long MINUTES = 60000;
     
     public static Date addHours(Date oldDate, int hours){
         Date newDate = new Date(oldDate.getTime() + hours * HOUR);
+        return newDate;
+    }
+    
+    public static Date addMinutes(Date oldDate, int mins){
+        Date newDate = new Date(oldDate.getTime() + mins * MINUTES);
+        
         return newDate;
     }
     

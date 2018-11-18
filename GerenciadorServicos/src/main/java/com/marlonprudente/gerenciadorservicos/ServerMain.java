@@ -9,8 +9,18 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.EOFException;
 import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
+import javax.crypto.SealedObject;
+import message.ServerMessage;
+import message.ServerSessionTicket;
+import message.ServerTicket;
+import message.Ticket;
+import utils.CryptoUtils;
+import utils.Hash;
+import utils.TimeUtils;
 
 /**
  *
@@ -33,29 +43,46 @@ public class ServerMain {
 
 class Connection extends Thread {
 
-    DataInputStream in;
-    DataOutputStream out;
+    ObjectInputStream inStream = null;
+    ObjectOutputStream outStream = null;
+    public static CryptoUtils criptoServer = null;
+    public static CryptoUtils criptoSession = null;
     Socket clientSocket;
-
+    Database db = new Database();
+    String serverKey = db.usuarios.get("server");
     public Connection(Socket aClientSocket) {
         try {
             clientSocket = aClientSocket;
-            in = new DataInputStream(clientSocket.getInputStream());
-            out = new DataOutputStream(clientSocket.getOutputStream());
+            criptoServer = new CryptoUtils(serverKey);
+            inStream = new ObjectInputStream(clientSocket.getInputStream());
+            outStream = new ObjectOutputStream(clientSocket.getOutputStream());
             this.start();
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.out.println("Connection:" + e.getMessage());
         }
     }
 
     public void run() {
         try {			                 // an echo server
-            String data = in.readUTF();	                  // read a line of data from the stream
-            out.writeUTF(data + "Respostaasdf");
-        } catch (EOFException e) {
-            System.out.println("EOF:" + e.getMessage());
-        } catch (IOException e) {
-            System.out.println("readline:" + e.getMessage());
+            ServerMessage data = (ServerMessage)inStream.readObject();	                  // read a line of data from the stream
+            ServerTicket serverTicket = (ServerTicket)criptoServer.decrypt(data.getServerTicket());
+            String sessionServidorKey = serverTicket.sessionKeyServidor;
+            criptoSession = new CryptoUtils(Hash.stringHexa(Hash.gerarHash(sessionServidorKey, "MD5")));
+            ServerSessionTicket sessionTicket = (ServerSessionTicket)criptoSession.decrypt(data.getSessionTicket()); 
+            System.out.println("Cliente: " + sessionTicket.clienteID);
+            Ticket ticket = new Ticket(sessionTicket.clienteID, sessionTicket.tempo, sessionTicket.servico, sessionTicket.numeroAleatorio);
+            String resposta = "Cliente " + sessionTicket.clienteID;
+            if(TimeUtils.checkValidTimestamp(sessionTicket.tempo)){
+                resposta += " >Autorizado para usar o serviço: " + sessionTicket.servico;
+            }else{
+                resposta += " Não está autorizado para usar este serviço, Prazo expirado!";
+            }
+            ticket.setResposta(resposta);
+            SealedObject ticketCripto = criptoSession.encrypt(ticket);
+            data.setTicket(ticketCripto);
+            outStream.writeObject(data);
+        } catch (Exception e) {
+            System.out.println("Run:" + e.getMessage());
         } finally {
             try {
                 clientSocket.close();
